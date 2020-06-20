@@ -2,7 +2,8 @@ import sys
 
 print("Enter contig length")
 step = int(input())
-numOfChr = 2
+print("Enter number of chromosomes")
+numOfChr = int(input())
 contigTailLen = 100000
 flag = False
 densities = {}
