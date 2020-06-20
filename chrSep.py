@@ -1,92 +1,66 @@
 import sys
 
-chromosomeNamesDict = {}
-numOfContigs = 0
-numOfChr = 0
-
-inp = ""
-while True:
-    print("Enter chromosome name, followed by the number of contigs it contains, Q to finish")
-    inp = input()
-    if inp == "Q":
-        break
-    sep = inp.split()
-    chromosomeNamesDict[sep[0]] = int(sep[1])
-    numOfContigs += int(sep[1])
-    numOfChr += 1
 print("Enter contig length")
 step = int(input())
-start = 0
+numOfChr = 2
 contigTailLen = 100000
 flag = False
-n = numOfContigs
 densities = {}
 contigs = {}
 contigTails = {}
 contigTailsFlags = {}
 stats = {}
 chromosomes = {}
-contigList = [i + 1 for i in range(numOfContigs)]
-chromosomeNames = []
-contigRev = {}
-
-for i in range(numOfContigs):
-    contigs[i + 1] = [start, start + step, False]
-    contigTailsFlags[i + 1] = [False, False]
-    contigRev[i + 1] = 0
-    start += step
-    for j in range(numOfContigs):
-        contigTails[(i + 1, j + 1)] = [0, 0, 0, 0]
-        stats[(i + 1, j + 1)] = 0
-        densities[j + 1] = 0
+contigList = []
 
 with open(sys.argv[1]) as f:
     for line in f:
         fields = line.split("\t")
-        if fields[0][0] == '@':
+        if line.startswith("@SQ"):
+            split1 = fields[1].split(":")
+            contigs[split1[1]] = False
+            contigList.append(split1[1])
+            contigTailsFlags[split1[1]] = [False, False]
+            densities[split1[1]] = 0
+            continue
+        if line.startswith("@PG"):
+            numOfContigs = len(contigList)
+            n = numOfContigs
+            for i in contigs.keys():
+                for j in contigs.keys():
+                    contigTails[(i, j)] = [0, 0, 0, 0]
+                    stats[(i, j)] = 0
             continue
         if not flag:
             flag = True
             for key in contigs.keys():
-                contigs[key][2] = False
+                contigs[key] = False
             for key in contigTailsFlags.keys():
                 for i in range(len(contigTailsFlags[key])):
                     contigTailsFlags[key][i] = False
             for key in contigs.keys():
-                if contigs[key][0] <= int(fields[3]) < contigs[key][1]:
-                    index = 0
-                    for key2 in chromosomeNamesDict.keys():
-                        if key2 != fields[2]:
-                            index += chromosomeNamesDict[key2]
-                        else:
-                            break
-                    if contigs[key][0] <= int(fields[3]) < contigs[key][0] + contigTailLen:
-                        contigTailsFlags[key + index][0] = True
-                    elif contigs[key][1] - contigTailLen <= int(fields[3]) < contigs[key][1]:
-                        contigTailsFlags[key + index][1] = True
-                    contigs[key + index][2] = True
-                    densities[key + index] += 1
+                if fields[2] == key:
+                    if 0 <= int(fields[3]) < contigTailLen:
+                        contigTailsFlags[key][0] = True
+                    elif step - contigTailLen <= int(fields[3]) < step:
+                        contigTailsFlags[key][1] = True
+                    contigs[key] = True
+                    densities[key] += 1
                     break
         else:
             flag = False
             for key in contigs.keys():
-                if contigs[key][0] <= int(fields[3]) < contigs[key][1]:
-                    index = 0
-                    for key2 in chromosomeNamesDict.keys():
-                        if key2 != fields[2]:
-                            index += chromosomeNamesDict[key2]
-                        else:
-                            break
+                if fields[2] == key:
                     for i in contigs.keys():
-                        if contigs[i][2] and i != key + index:
+                        if contigs[i]:
                             for j in range(2):
                                 if contigTailsFlags[i][j]:
-                                    if contigs[key][0] <= int(fields[3]) < contigs[key][0] + contigTailLen:
-                                        contigTails[(key + index, i)][0 + 2 * j] += 1
-                                    elif contigs[key][1] - contigTailLen <= int(fields[3]) < contigs[key][1]:
-                                        contigTails[(key + index, i)][1 + 2 * j] += 1
-                            stats[(key + index, i)] += 1
-                            densities[key + index] += 1
+                                    if 0 <= int(fields[3]) < contigTailLen:
+                                        contigTails[(key, i)][0 + 2 * j] += 1
+                                    elif step - contigTailLen <= int(fields[3]) < step:
+                                        contigTails[(key, i)][1 + 2 * j] += 1
+                            stats[(key, i)] += 1
+                            densities[key] += 1
                             break
                     else:
                         continue
@@ -94,17 +68,28 @@ with open(sys.argv[1]) as f:
 
 statsCopy = stats.copy()
 
+for key in statsCopy.keys():
+    if statsCopy[key] == 0:
+        del stats[key]
+
+densitiesCopy = densities.copy()
+
+for key in densitiesCopy.keys():
+    if densities[key] == 0:
+        del densities[key]
+        contigList.remove(key)
+        n -= 1
+
+statsCopy = stats.copy()
+
 for key1 in statsCopy.keys():
     for key2 in statsCopy.keys():
-        if key1[0] == key2[1] and key1[1] == key2[0]:
+        if key1[0] == key2[1] and key1[1] == key2[0] and densities[key1[0]] != 0 and densities[key2[0]] != 0:
             stats[key1] = (statsCopy[key1] + statsCopy[key2]) / (densities[key1[0]] * densities[key2[0]])
             del stats[key2]
             break
 
 statsSorted = {k: v for k, v in sorted(stats.items(), key=lambda item: item[1])}
-
-for key in statsSorted.keys():
-    print(str(key) + ": " + str(statsSorted[key]))
 
 while n != numOfChr:
     n -= 1
@@ -142,26 +127,23 @@ while n != numOfChr:
                 del stats[(i, biggestConting[1])]
 
     contigList.append("newContig" + str(n))
-    if n == numOfContigs - 1:
-        chromosomes["newContig" + str(n)] = biggestConting
+    chromosomes["newContig" + str(n)] = ()
+    if biggestConting[0] in chromosomes:
+        chromosomes["newContig" + str(n)] += chromosomes[biggestConting[0]]
+        del chromosomes[biggestConting[0]]
     else:
-        chromosomes["newContig" + str(n)] = ()
-        if biggestConting[0] in chromosomes:
-            chromosomes["newContig" + str(n)] += chromosomes[biggestConting[0]]
-        else:
-            chromosomes["newContig" + str(n)] += (biggestConting[0],)
-        if biggestConting[1] in chromosomes:
-            chromosomes["newContig" + str(n)] += chromosomes[biggestConting[1]]
-        else:
-            chromosomes["newContig" + str(n)] += (biggestConting[1],)
-        if biggestConting[0] not in chromosomes and biggestConting[1] not in chromosomes:
-            chromosomes["newContig" + str(n)] = biggestConting
+        chromosomes["newContig" + str(n)] += (biggestConting[0],)
+    if biggestConting[1] in chromosomes:
+        chromosomes["newContig" + str(n)] += chromosomes[biggestConting[1]]
+        del chromosomes[biggestConting[1]]
+    else:
+        chromosomes["newContig" + str(n)] += (biggestConting[1],)
+
+if len(sys.argv) == 3 and sys.argv[2] == "-v":
+    for key in statsSorted.keys():
+        print(str(key) + ": " + str(statsSorted[key]))
+    for key in contigTails.keys():
+        print(str(key) + ": " + str(contigTails[key]))
 
 for key in chromosomes.keys():
     print(str(key) + ": " + str(chromosomes[key]))
-
-for key in contigTails.keys():
-    print(str(key) + ": " + str(contigTails[key]))
-
-# for key in contigRev.keys():
-#     print(str(key) + ": " + str(contigRev[key]))
